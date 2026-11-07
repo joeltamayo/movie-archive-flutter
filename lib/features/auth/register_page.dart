@@ -4,9 +4,11 @@ import 'package:movie_archive/core/theme/app_colors.dart';
 import 'package:movie_archive/core/utils/validators.dart';
 import 'package:movie_archive/core/widgets/app_button.dart';
 import 'package:movie_archive/core/widgets/app_text_field.dart';
+import 'package:movie_archive/core/widgets/error_banner.dart';
+import 'package:movie_archive/data/services/auth_service.dart';
+import 'package:movie_archive/data/services/services.dart';
 
-
-// Pantalla de registro. Por ahora no hace nada, solo valida el formulario y redirige a /catalog.
+// Pantalla de registro.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -22,6 +24,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final _birthDateText = TextEditingController();
   DateTime? _birthDate;
   bool _hidePassword = true;
+  bool _busy = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -54,10 +58,35 @@ class _RegisterPageState extends State<RegisterPage> {
     });
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_busy) return;
     if (!_formKey.currentState!.validate()) return;
-    // Cuando se agregue la implementación de AuthService, aquí se llamará a AuthService.register(...) y se creará el documento users/{uid}.
-    context.go('/catalog');
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await authService.register(
+        name: _name.text.trim(),
+        email: _email.text.trim(),
+        password: _password.text,
+        birthDate: _birthDate!,
+      );
+      // Al cambiar la sesión, el router redirige solo al catálogo.
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _busy = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo completar el registro. Inténtalo de nuevo.';
+        _busy = false;
+      });
+    }
   }
 
   @override
@@ -86,7 +115,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       children: [
                         const Text('¿Ya tienes una cuenta?'),
                         TextButton(
-                          onPressed: () => context.go('/login'),
+                          onPressed: _busy ? null : () => context.go('/login'),
                           child: const Text(
                             'Inicia sesión aquí.',
                             style: TextStyle(
@@ -105,6 +134,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       controller: _name,
                       hint: 'Juan Pazcal',
                       textInputAction: TextInputAction.next,
+                      enabled: !_busy,
                       validator: (v) =>
                           Validators.notEmpty(v, message: 'Escribe tu nombre'),
                     ),
@@ -115,6 +145,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hint: 'ejemplo@correo.com',
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
+                      enabled: !_busy,
                       validator: Validators.email,
                     ),
                     const SizedBox(height: 16),
@@ -124,6 +155,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hint: '••••••',
                       obscureText: _hidePassword,
                       textInputAction: TextInputAction.next,
+                      enabled: !_busy,
                       validator: Validators.password,
                       suffixIcon: IconButton(
                         tooltip: _hidePassword
@@ -144,19 +176,27 @@ class _RegisterPageState extends State<RegisterPage> {
                       controller: _birthDateText,
                       hint: 'dd/mm/aaaa',
                       readOnly: true,
+                      enabled: !_busy,
                       onTap: _pickDate,
                       suffixIcon: IconButton(
                         tooltip: 'Elegir fecha',
                         icon: const Icon(Icons.calendar_month_outlined),
-                        onPressed: _pickDate,
+                        onPressed: _busy ? null : _pickDate,
                       ),
                       validator: (v) => Validators.notEmpty(
                         v,
                         message: 'Selecciona tu fecha de nacimiento',
                       ),
                     ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      ErrorBanner(_error!),
+                    ],
                     const SizedBox(height: 28),
-                    AppButton.accent(label: 'Regístrate', onPressed: _submit),
+                    AppButton.accent(
+                      label: _busy ? 'Registrando…' : 'Regístrate',
+                      onPressed: _busy ? null : _submit,
+                    ),
                   ],
                 ),
               ),

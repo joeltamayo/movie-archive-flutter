@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'package:movie_archive/data/services/services.dart';
 import 'package:movie_archive/features/archive/archive_page.dart';
 import 'package:movie_archive/features/archive/movie_form_page.dart';
 import 'package:movie_archive/features/auth/login_page.dart';
@@ -9,6 +10,16 @@ import 'package:movie_archive/features/detail/movie_detail_page.dart';
 // Rutas de la app.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/login',
+  refreshListenable: authService,
+  redirect: (context, state) {
+    final loggedIn = authService.isLoggedIn;
+    final location = state.matchedLocation;
+    final isPublic = location == '/login' || location == '/register';
+
+    if (!loggedIn && !isPublic) return '/login';
+    if (loggedIn && isPublic) return '/catalog';
+    return null;
+  },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
     GoRoute(

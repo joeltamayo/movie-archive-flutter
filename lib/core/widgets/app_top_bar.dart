@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movie_archive/core/theme/app_colors.dart';
 import 'package:movie_archive/core/widgets/menu_row.dart';
+import 'package:movie_archive/data/services/services.dart';
 
 // Barra superior azul. En pantallas principales muestra el icono menu con el
 // menú (Catálogo, Archivo, Cerrar sesión); en pantallas internas, la flecha de regresar.
@@ -68,8 +69,7 @@ class _MainMenu extends StatelessWidget {
           case 'archive':
             context.go('/archive');
           case 'logout':
-            // Fase 2: aquí se llamará a AuthService.signOut().
-            context.go('/login');
+            authService.signOut();
         }
       },
       itemBuilder: (context) => const <PopupMenuEntry<String>>[
