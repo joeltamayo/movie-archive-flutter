@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 // Error devuelto por Firestore (código HTTP y cuerpo de la respuesta).
@@ -19,9 +20,7 @@ typedef TokenProvider = Future<String?> Function({bool forceRefresh});
 
 // Cliente HTTP de la API REST de Firestore.
 //
-// Cada solicitud lleva el ID token de Firebase Auth en la cabecera
-// `Authorization: Bearer ...`; las reglas de seguridad deciden si se permite.
-// Si responde 401 (token vencido) renueva el token y reintenta una vez.
+// Cada solicitud lleva el ID token de Firebase Auth en la cabecera. Si responde 401 (token vencido) renueva el token y reintenta una vez.
 class FirestoreRest {
   FirestoreRest({
     required this.projectId,
@@ -93,7 +92,11 @@ class FirestoreRest {
       if (response.statusCode == 401 && attempt == 0) continue;
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(response.statusCode, utf8.decode(response.bodyBytes));
+        final text = utf8.decode(response.bodyBytes);
+        if (kDebugMode) {
+          debugPrint('Firestore $method ${uri.path} -> ${response.statusCode}: $text');
+        }
+        throw ApiException(response.statusCode, text);
       }
       if (response.bodyBytes.isEmpty) return <String, dynamic>{};
 
@@ -104,12 +107,34 @@ class FirestoreRest {
   }
 }
 
-// Valores con el formato de tipos de Firestore REST.
+// Valores con el formato de tipos de Firestore REST (escritura).
 
 Map<String, dynamic> fsString(String value) => {'stringValue': value};
 
-// Los enteros viajan como texto en `integerValue`.
+  // `path` es relativo a `documents/`, por ejemplo `users/abc123`.
 Map<String, dynamic> fsInt(int value) => {'integerValue': '$value'};
 
 Map<String, dynamic> fsTimestamp(DateTime value) =>
     {'timestampValue': value.toUtc().toIso8601String()};
+
+// Lectura de campos de un documento (`fields`). Si falta el campo o tiene otro tipo, devuelven un valor vacío en lugar de lanzar un error.
+String fsReadString(Map<String, dynamic> fields, String key) {
+  final value = fields[key];
+  if (value is Map<String, dynamic>) {
+    final text = value['stringValue'];
+    if (text is String) return text;
+  }
+  return '';
+}
+
+int fsReadInt(Map<String, dynamic> fields, String key) {
+  final value = fields[key];
+  if (value is Map<String, dynamic>) {
+    final integer = value['integerValue'];
+    if (integer is String) return int.tryParse(integer) ?? 0;
+    if (integer is num) return integer.toInt();
+    final decimal = value['doubleValue'];
+    if (decimal is num) return decimal.toInt();
+  }
+  return 0;
+}
