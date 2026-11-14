@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:movie_archive/core/theme/app_colors.dart';
+import 'package:movie_archive/core/utils/error_messages.dart';
 import 'package:movie_archive/core/widgets/app_top_bar.dart';
 import 'package:movie_archive/core/widgets/poster_image.dart';
 import 'package:movie_archive/core/widgets/state_views.dart';
@@ -19,7 +20,7 @@ class MovieDetailPage extends StatefulWidget {
 class _MovieDetailPageState extends State<MovieDetailPage> {
   Movie? _movie;
   bool _loading = true;
-  bool _error = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -30,7 +31,7 @@ class _MovieDetailPageState extends State<MovieDetailPage> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
-      _error = false;
+      _errorMessage = null;
     });
     try {
       final movie = await movieRepository.getById(widget.movieId);
@@ -39,10 +40,13 @@ class _MovieDetailPageState extends State<MovieDetailPage> {
         _movie = movie;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = true;
+        _errorMessage = describeError(
+          e,
+          fallback: 'No se pudo cargar la película.',
+        );
         _loading = false;
       });
     }
@@ -58,7 +62,10 @@ class _MovieDetailPageState extends State<MovieDetailPage> {
 
   Widget _buildBody() {
     if (_loading) return const LoadingView();
-    if (_error) return ErrorView(onRetry: _load);
+    final errorMessage = _errorMessage;
+    if (errorMessage != null) {
+      return ErrorView(message: errorMessage, onRetry: _load);
+    }
     final movie = _movie;
     if (movie == null) {
       return ErrorView(

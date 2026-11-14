@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movie_archive/core/theme/app_colors.dart';
+import 'package:movie_archive/core/utils/error_messages.dart';
 import 'package:movie_archive/core/widgets/app_top_bar.dart';
 import 'package:movie_archive/core/widgets/paginator.dart';
 import 'package:movie_archive/core/widgets/state_views.dart';
@@ -21,7 +22,7 @@ class _CatalogPageState extends State<CatalogPage> {
   static const _pageSize = 6;
 
   List<Movie>? _movies;
-  bool _error = false;
+  String? _errorMessage;
   int _page = 0;
 
   @override
@@ -30,18 +31,34 @@ class _CatalogPageState extends State<CatalogPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _movies = null;
-      _error = false;
-    });
+  // Carga el catálogo. Con `showLoading: false` (deslizar para actualizar) mantiene la lista visible; si falla y ya había datos, avisa con un SnackBar en lugar de reemplazar la pantalla.
+  Future<void> _load({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _movies = null;
+        _errorMessage = null;
+      });
+    }
     try {
       final data = await movieRepository.getAll();
       if (!mounted) return;
-      setState(() => _movies = data);
-    } catch (_) {
+      setState(() {
+        _movies = data;
+        _errorMessage = null;
+      });
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _error = true);
+      final message = describeError(
+        e,
+        fallback: 'No se pudo cargar el catálogo.',
+      );
+      if (_movies == null) {
+        setState(() => _errorMessage = message);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
     }
   }
 
@@ -51,7 +68,10 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Widget _buildBody() {
-    if (_error) return ErrorView(onRetry: _load);
+    final errorMessage = _errorMessage;
+    if (errorMessage != null) {
+      return ErrorView(message: errorMessage, onRetry: () => _load());
+    }
     final movies = _movies;
     if (movies == null) return const LoadingView();
     if (movies.isEmpty) {
@@ -70,7 +90,11 @@ class _CatalogPageState extends State<CatalogPage> {
             (constraints.maxWidth - horizontalPadding * 2 - gap) / 2;
         final cardHeight = cardWidth * 1.5 + MovieCard.titleBarHeight;
 
-        return SingleChildScrollView(
+        return RefreshIndicator(
+          color: AppColors.navy,
+          onRefresh: () => _load(showLoading: false),
+          child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(
             horizontalPadding,
             16,
@@ -119,6 +143,7 @@ class _CatalogPageState extends State<CatalogPage> {
                 onChanged: (p) => setState(() => _page = p),
               ),
             ],
+          ),
           ),
         );
       },
