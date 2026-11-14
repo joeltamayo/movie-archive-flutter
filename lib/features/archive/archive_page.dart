@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movie_archive/core/theme/app_colors.dart';
+import 'package:movie_archive/core/utils/error_messages.dart';
 import 'package:movie_archive/core/widgets/app_top_bar.dart';
 import 'package:movie_archive/core/widgets/confirm_dialog.dart';
 import 'package:movie_archive/core/widgets/paginator.dart';
@@ -22,7 +23,7 @@ class _ArchivePageState extends State<ArchivePage> {
   static const _pageSize = 4;
 
   List<Movie>? _movies;
-  bool _error = false;
+  String? _errorMessage;
   int _page = 0;
   String? _openId;
 
@@ -36,7 +37,7 @@ class _ArchivePageState extends State<ArchivePage> {
     if (showLoading) {
       setState(() {
         _movies = null;
-        _error = false;
+        _errorMessage = null;
       });
     }
     try {
@@ -44,11 +45,11 @@ class _ArchivePageState extends State<ArchivePage> {
       if (!mounted) return;
       setState(() {
         _movies = data;
-        _error = false;
+        _errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _error = true);
+      setState(() => _errorMessage = describeError(e));
     }
   }
 
@@ -70,11 +71,20 @@ class _ArchivePageState extends State<ArchivePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Película eliminada')),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo eliminar. Inténtalo de nuevo.')),
+        SnackBar(
+          content: Text(
+            describeError(
+              e,
+              fallback: 'No se pudo eliminar. Inténtalo de nuevo.',
+            ),
+          ),
+        ),
       );
+      // La lista pudo cambiar (por ejemplo, ya estaba eliminada): se refresca.
+      await _load(showLoading: false);
     }
   }
 
@@ -84,7 +94,10 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   Widget _buildBody() {
-    if (_error) return ErrorView(onRetry: () => _load());
+    final errorMessage = _errorMessage;
+    if (errorMessage != null) {
+      return ErrorView(message: errorMessage, onRetry: () => _load());
+    }
     final movies = _movies;
     if (movies == null) return const LoadingView();
 
