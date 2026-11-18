@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movie_archive/core/theme/app_colors.dart';
 import 'package:movie_archive/core/utils/error_messages.dart';
+import 'package:movie_archive/core/utils/text_search.dart';
 import 'package:movie_archive/core/widgets/app_top_bar.dart';
 import 'package:movie_archive/core/widgets/paginator.dart';
 import 'package:movie_archive/core/widgets/state_views.dart';
@@ -21,8 +22,12 @@ class CatalogPage extends StatefulWidget {
 class _CatalogPageState extends State<CatalogPage> {
   static const _pageSize = 6;
 
+  final _searchController = TextEditingController();
+
   List<Movie>? _movies;
   String? _errorMessage;
+  String _query = '';
+  bool _searching = false;
   int _page = 0;
 
   @override
@@ -31,7 +36,13 @@ class _CatalogPageState extends State<CatalogPage> {
     _load();
   }
 
-  // Carga el catálogo. Con `showLoading: false` (deslizar para actualizar) mantiene la lista visible; si falla y ya había datos, avisa con un SnackBar en lugar de reemplazar la pantalla.
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // Carga el catálogo. Con `showLoading: false` (deslizar para actualizar)
   Future<void> _load({bool showLoading = true}) async {
     if (showLoading) {
       setState(() {
@@ -62,9 +73,66 @@ class _CatalogPageState extends State<CatalogPage> {
     }
   }
 
+  void _onSearchChanged(String value) {
+    setState(() {
+      _query = value;
+      _page = 0;
+    });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _onSearchChanged('');
+  }
+
+  void _openSearch() => setState(() => _searching = true);
+
+  // Cierra el modo búsqueda y quita el filtro.
+  void _closeSearch() {
+    _searchController.clear();
+    setState(() {
+      _searching = false;
+      _query = '';
+      _page = 0;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: const AppTopBar(), body: _buildBody());
+    return Scaffold(
+      appBar: AppTopBar(
+        titleWidget: _searching ? _buildSearchField() : null,
+        actions: [
+          if (_movies?.isNotEmpty ?? false)
+            IconButton(
+              tooltip: _searching ? 'Cerrar búsqueda' : 'Buscar',
+              icon: Icon(_searching ? Icons.close : Icons.search),
+              onPressed: _searching ? _closeSearch : _openSearch,
+            ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      autofocus: true,
+      onChanged: _onSearchChanged,
+      textInputAction: TextInputAction.search,
+      cursorColor: Colors.white,
+      style: const TextStyle(color: Colors.white, fontSize: 16),
+      decoration: const InputDecoration(
+        hintText: 'Buscar por título',
+        hintStyle: TextStyle(color: Colors.white70),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        filled: false,
+        isDense: true,
+      ),
+    );
   }
 
   Widget _buildBody() {
@@ -78,9 +146,18 @@ class _CatalogPageState extends State<CatalogPage> {
       return const EmptyView(message: 'Aún no hay películas en el catálogo');
     }
 
-    final pageCount = (movies.length / _pageSize).ceil();
-    final page = _page >= pageCount ? pageCount - 1 : _page;
-    final items = movies.skip(page * _pageSize).take(_pageSize).toList();
+    final query = normalizeForSearch(_query);
+    final filtered = query.isEmpty
+        ? movies
+        : movies
+            .where((m) => normalizeForSearch(m.title).contains(query))
+            .toList();
+
+    final pageCount = (filtered.length / _pageSize).ceil();
+    final page = pageCount == 0
+        ? 0
+        : (_page >= pageCount ? pageCount - 1 : _page);
+    final items = filtered.skip(page * _pageSize).take(_pageSize).toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -94,56 +171,88 @@ class _CatalogPageState extends State<CatalogPage> {
           color: AppColors.navy,
           onRefresh: () => _load(showLoading: false),
           child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            horizontalPadding,
-            16,
-            horizontalPadding,
-            24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'TODAS LAS PELÍCULAS QUE PUEDAS IMAGINAR',
-                style: TextStyle(
-                  fontSize: 11,
-                  letterSpacing: 1.2,
-                  color: AppColors.muted,
+            physics: const AlwaysScrollableScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(
+              horizontalPadding,
+              16,
+              horizontalPadding,
+              24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'TODAS LAS PELÍCULAS QUE PUEDAS IMAGINAR',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    color: AppColors.muted,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Catálogo',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 16),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: items.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: gap,
-                  mainAxisSpacing: gap,
-                  mainAxisExtent: cardHeight,
+                const SizedBox(height: 4),
+                const Text(
+                  'Catálogo',
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
                 ),
-                itemBuilder: (context, index) {
-                  final movie = items[index];
-                  return MovieCard(
-                    movie: movie,
-                    onTap: () => context.push('/movie/${movie.id}'),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-              Paginator(
-                page: page,
-                pageCount: pageCount,
-                onChanged: (p) => setState(() => _page = p),
-              ),
-            ],
-          ),
+                const SizedBox(height: 16),
+                if (filtered.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.search_off,
+                            size: 48,
+                            color: AppColors.muted,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No hay resultados para "${_query.trim()}"',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _clearSearch,
+                            child: const Text('Borrar búsqueda'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else ...[
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: items.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: gap,
+                      mainAxisSpacing: gap,
+                      mainAxisExtent: cardHeight,
+                    ),
+                    itemBuilder: (context, index) {
+                      final movie = items[index];
+                      return MovieCard(
+                        movie: movie,
+                        onTap: () => context.push('/movie/${movie.id}'),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Paginator(
+                    page: page,
+                    pageCount: pageCount,
+                    onChanged: (p) => setState(() => _page = p),
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },

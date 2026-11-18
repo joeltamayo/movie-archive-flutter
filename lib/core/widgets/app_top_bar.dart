@@ -11,10 +11,14 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     this.title = 'Movie Archive',
     this.showBack = false,
+    this.titleWidget,
+    this.actions,
   });
 
   final String title;
   final bool showBack;
+  final Widget? titleWidget;
+  final List<Widget>? actions;
 
   @override
   Size get preferredSize => const Size.fromHeight(64);
@@ -41,14 +45,17 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
               },
             )
           : const _MainMenu(),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-      ),
+      actions: actions,
+      title:
+          titleWidget ??
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
     );
   }
 }
